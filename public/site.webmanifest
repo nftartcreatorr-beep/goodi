@@ -1,0 +1,32 @@
+{
+  "name": "Goodi",
+  "short_name": "Goodi",
+  "description": "Daily tasks + gashapon rewards for kids & parents.",
+  "icons": [
+    {
+      "src": "goodi-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "goodi-icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png"
+    },
+    {
+      "src": "goodi-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "goodi-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#9ECEE9",
+  "theme_color": "#12314E"
+}

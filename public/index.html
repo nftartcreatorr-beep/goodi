@@ -1,0 +1,178 @@
+
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goodi MVP</title>
+  <link rel="apple-touch-icon" href="/goodi-apple-touch-icon-180.png" sizes="180x180">
+  <link rel="icon" type="image/png" sizes="32x32" href="/goodi-icon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/goodi-icon-16.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="theme-color" content="#12314E">
+  <style>
+    :root{
+      --goodi-blue:#9ECEE9; --goodi-navy:#12314E; --goodi-green:#90C87B;
+    }
+    body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+          background:var(--goodi-blue); color:#12314E; }
+    .wrap{ max-width:960px; margin:0 auto; padding:24px; }
+    .btn{ border:0; border-radius:12px; padding:14px 20px; background:#12314E; color:#fff; font-weight:700; }
+    .card{ background:#fff; border-radius:16px; padding:20px; box-shadow:0 8px 24px rgba(0,0,0,.15); }
+
+    /* Modal */
+    .gacha-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9999}
+    .gacha-modal.show{display:flex}
+    .gacha-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+    .gacha-wrap{position:relative;z-index:1;width:min(480px,92vw)}
+    .gacha-stage{position:relative;aspect-ratio:1/1;background:#fff;border-radius:20px;
+      padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.25);
+      display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .gacha-video{width:100%;height:100%;object-fit:contain}
+
+    .gacha-spinner{position:absolute;width:42px;height:42px;border-radius:50%;
+      border:4px solid rgba(0,0,0,.15);border-top-color:rgba(0,0,0,.75);animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .gacha-burst{position:absolute;inset:0;opacity:0;pointer-events:none;
+      background:radial-gradient(circle,rgba(255,255,255,.95),transparent 60%)}
+    @keyframes flash{0%{opacity:0}30%{opacity:1}100%{opacity:0}}
+
+    .gacha-card{margin-top:12px;background:#fff;border-radius:14px;padding:16px;
+      box-shadow:0 6px 18px rgba(0,0,0,.2); text-align:center}
+    .hidden{display:none}
+    @keyframes card-in{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+    .goodi{
+      width:min(58%, 300px); user-select:none; pointer-events:none; image-rendering:auto;
+      filter: drop-shadow(0 6px 14px rgba(0,0,0,.25));
+      animation: idle-bob 1.8s ease-in-out infinite;
+      position:absolute;left:50%;top:50%;transform:translate(-50%,-53%);
+      display:none;
+    }
+    @keyframes idle-bob { 0%,100%{ transform:translate(-50%,-53%)} 50%{ transform:translate(-50%,-58%)} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Goodi MVP</h1>
+    <p class="card">這是扭蛋抽卡的示範。把你自己的影片上傳為 <code>public/videos/gacha_v2.mp4</code> 後即可使用。</p>
+    <button id="gachaBtn" class="btn">抽一次</button>
+  </div>
+
+  <!-- Modal -->
+  <div id="gachaModal" role="dialog" aria-hidden="true" class="gacha-modal">
+    <div class="gacha-backdrop" data-close></div>
+    <div class="gacha-wrap">
+      <div class="gacha-stage">
+        <video id="gachaVideo" class="gacha-video" preload="auto" playsinline muted poster="/gacha-poster.png">
+          <!-- 請上傳 public/videos/gacha_v2.mp4 到專案 -->
+          <source src="/videos/gacha_v2.mp4" type="video/mp4">
+        </video>
+
+        <img id="goodiMascot" class="goodi" alt="Goodi mascot">
+
+        <div id="gachaSpinner" class="gacha-spinner" aria-hidden="true"></div>
+        <div id="gachaBurst" class="gacha-burst" aria-hidden="true"></div>
+      </div>
+      <div id="gachaResult" class="gacha-card hidden">
+        <div id="gachaTitle" style="font-weight:800;font-size:18px"></div>
+        <div id="gachaDesc" style="opacity:.8"></div>
+        <button class="btn" data-close>知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const modal  = document.getElementById('gachaModal');
+    const btn    = document.getElementById('gachaBtn');
+    const video  = document.getElementById('gachaVideo');
+    const spin   = document.getElementById('gachaSpinner');
+    const burst  = document.getElementById('gachaBurst');
+    const card   = document.getElementById('gachaResult');
+    const title  = document.getElementById('gachaTitle');
+    const desc   = document.getElementById('gachaDesc');
+    const goodi  = document.getElementById('goodiMascot');
+
+    const pool = [
+      { name:'小貼紙',  desc:'可在錢包核銷', rarity:'Common',    prob:0.60 },
+      { name:'10代幣',  desc:'可兌換扭蛋券', rarity:'Rare',      prob:0.30 },
+      { name:'20代幣',  desc:'大獎！',       rarity:'Epic',      prob:0.09 },
+      { name:'實體小禮', desc:'Legend！',     rarity:'Legendary', prob:0.01 }
+    ];
+    function pick(pool){ const r=Math.random(); let a=0; for(const it of pool){ a+=it.prob; if(r<=a) return it; } return pool[0]; }
+
+    const GOODI_POSE = {
+      'Common':    '/img/mascot/goodi-normal-512.webp',
+      'Rare':      '/img/mascot/goodi-front-512.webp',
+      'Epic':      '/img/mascot/goodi-side-512.webp',
+      'Legendary': '/img/mascot/goodi-happy-512.webp'
+    };
+
+    const REVEAL_AT = 0.60;
+
+    function openModal(){
+      modal.classList.add('show');
+      modal.setAttribute('aria-hidden','false');
+      card.classList.add('hidden');
+      burst.style.opacity = 0;
+      spin.style.display = 'block';
+      goodi.style.display = 'none';
+    }
+    function closeModal(){
+      modal.classList.remove('show');
+      modal.setAttribute('aria-hidden','true');
+      video.pause();
+    }
+
+    function startPlayback(){
+      try{ video.currentTime = 0; }catch{}
+      video.loop = false; video.muted = true;
+      const pp = video.play(); if(pp && pp.catch){ pp.catch(()=>{}); }
+    }
+
+    function scheduleReveal(){
+      const dur = isFinite(video.duration) && video.duration>0 ? video.duration : null;
+      if(dur){
+        const target = dur * REVEAL_AT;
+        const onProgress = ()=>{
+          if(video.currentTime >= target || video.ended){
+            video.removeEventListener('timeupdate', onProgress);
+            runReveal();
+          }
+        };
+        video.addEventListener('timeupdate', onProgress);
+      }else{
+        setTimeout(runReveal, 1800);
+      }
+    }
+
+    function runReveal(){
+      burst.style.animation = 'flash .36s ease-out';
+      setTimeout(()=>{ burst.style.animation=''; showResult(); }, 360);
+    }
+
+    function showResult(){
+      const item = pick(pool);
+      title.textContent = `獲得：${item.name} ${item.rarity==='Legendary'?'✨':''}`;
+      desc.textContent  = item.desc || '';
+      goodi.src = GOODI_POSE[item.rarity] || GOODI_POSE['Common'];
+      goodi.style.display = 'block';
+      card.classList.remove('hidden');
+      card.style.animation = 'card-in .2s ease-out';
+      spin.style.display = 'none';
+    }
+
+    btn.addEventListener('click', ()=>{
+      openModal();
+      startPlayback();
+      const ready = ()=>{ spin.style.display='none'; scheduleReveal(); };
+      if(video.readyState >= 3) ready();
+      else video.addEventListener('canplaythrough', ready, { once:true });
+    });
+
+    modal.addEventListener('click', (e)=>{ if(e.target.dataset.close!==undefined) closeModal(); });
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && modal.classList.contains('show')) closeModal(); });
+  </script>
+</body>
+</html>
